@@ -15,7 +15,6 @@ import {
   BookOpen,
   Save,
   Send,
-  Trash2,
   Edit3,
   Calendar,
   Award,
@@ -554,6 +553,14 @@ const MahasiswaDashboard = ({ portalMode = "absen" }) => {
 
   const handleEditLogbook = (item) => {
     if (item.status !== "draft") return;
+    if ((item.edit_count || 0) >= 2) {
+      pushToast({
+        type: "warning",
+        title: "Batas edit tercapai",
+        message: "Logbook ini sudah diedit 2 kali. Hubungi admin untuk reset.",
+      });
+      return;
+    }
     setEditingLogbookId(item.id);
     setLogbookForm({
       kegiatan: item.kegiatan,
@@ -573,34 +580,8 @@ const MahasiswaDashboard = ({ portalMode = "absen" }) => {
     fetchLogbookToday();
   };
 
-  const handleDeleteLogbook = (item) => {
-    setConfirmState({
-      title: "Hapus logbook?",
-      message: `Logbook tanggal ${item.tanggal} akan dihapus permanen.`,
-      confirmText: "Hapus",
-      tone: "danger",
-      onConfirm: async () => {
-        try {
-          const res = await axiosInstance.delete(`/logbook/${item.id}`);
-          if (res.data.success) {
-            pushToast({
-              type: "success",
-              title: "Logbook dihapus",
-              message: res.data.message,
-            });
-            fetchLogbookToday();
-            fetchLogbookList();
-          }
-        } catch (error) {
-          pushToast({
-            type: "error",
-            title: "Gagal",
-            message: error.response?.data?.message || "Gagal menghapus logbook",
-          });
-        }
-      },
-    });
-  };
+  // Catatan: mahasiswa TIDAK bisa menghapus logbook sendiri.
+  // Penghapusan hanya dilakukan admin lewat dashboard admin.
 
   // Batalkan izin yang masih pending
   const handleCancelIzin = async (id) => {
@@ -1311,25 +1292,29 @@ const MahasiswaDashboard = ({ portalMode = "absen" }) => {
                                     ? "Submitted"
                                     : "Draft"}
                                 </span>
+                                {item.status === "draft" && (
+                                  <span className="text-xs text-white/60 ml-2">
+                                    Edit {item.edit_count || 0}/2
+                                  </span>
+                                )}
                               </div>
                               <div className="flex gap-1">
                                 {item.status === "draft" && (
-                                  <>
-                                    <button
-                                      onClick={() => handleEditLogbook(item)}
-                                      className="text-blue-600 hover:text-blue-800 p-1"
-                                      title="Edit"
-                                    >
-                                      <Edit3 className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteLogbook(item)}
-                                      className="text-red-600 hover:text-red-800 p-1"
-                                      title="Hapus"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </>
+                                  <button
+                                    onClick={() => handleEditLogbook(item)}
+                                    className={`p-1 ${(item.edit_count || 0) >= 2
+                                      ? "text-white/30 cursor-not-allowed"
+                                      : "text-blue-600 hover:text-blue-800"
+                                      }`}
+                                    title={
+                                      (item.edit_count || 0) >= 2
+                                        ? "Batas edit 2x sudah habis"
+                                        : "Edit"
+                                    }
+                                    disabled={(item.edit_count || 0) >= 2}
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
                                 )}
                                 {item.status === "draft" && (
                                   <button

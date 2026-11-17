@@ -1,6 +1,6 @@
 /*
  * ============================================================================
- * ROUTES: LOGBOOK (MySQL Version)
+ * ROUTES: LOGBOOK (PostgreSQL Version)
  * ============================================================================
  * Endpoint untuk logbook mahasiswa PKL.
  *
@@ -9,19 +9,19 @@
  * - GET    /api/logbook/today        Ambil/cek logbook hari ini (kalau ada)
  * - GET    /api/logbook/:id          Detail 1 logbook (milik sendiri)
  * - POST   /api/logbook              Create draft baru (1 per hari)
- * - PUT    /api/logbook/:id          Update draft (hanya kalau status draft)
+ * - PUT    /api/logbook/:id          Update draft (maksimal 2x edit)
  * - POST   /api/logbook/:id/submit   Submit logbook (status -> submitted, lock)
- * - DELETE /api/logbook/:id          Hapus draft sendiri
  *
  * ADMIN ENDPOINTS (perlu token admin):
  * - GET    /api/admin/logbook        List semua logbook, filter by nama/tanggal/status
  * - GET    /api/admin/logbook/:id    Detail 1 logbook (termasuk yang submitted)
- * - POST   /api/admin/logbook/:id/reset  Reset submitted -> draft (re-open edit)
+ * - POST   /api/admin/logbook/:id/reset  Reset submitted -> draft (jatah edit 2x dipulihkan)
  * - DELETE /api/admin/logbook/:id    Hapus logbook
  *
  * ATURAN BISNIS:
  * - 1 logbook per mahasiswa per hari (UNIQUE constraint)
- * - Hanya draft yang bisa diedit/dihapus oleh mahasiswa
+ * - Hanya draft yang bisa diedit oleh mahasiswa, maksimal 2x edit
+ * - Mahasiswa TIDAK bisa menghapus logbook sendiri (hanya admin)
  * - Setelah submit, logbook locked (admin yang bisa reset)
  * ============================================================================
  */
@@ -47,6 +47,7 @@ const formatLogbook = (row) => ({
   kegiatan: row.kegiatan,
   kendala: row.kendala,
   status: row.status,
+  edit_count: row.edit_count ?? 0,
   submitted_at: row.submitted_at,
   created_at: row.created_at,
   updated_at: row.updated_at,
@@ -250,14 +251,24 @@ router.put("/logbook/:id", verifyToken, isMahasiswa, async (req, res) => {
       });
     }
 
+    // Batas edit maksimal 2x per logbook
+    const editCount = existing.edit_count || 0;
+    if (editCount >= 2) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Batas edit logbook maksimal 2 kali sudah tercapai. Hubungi admin untuk reset.",
+      });
+    }
+
     await conn.query(
-      "UPDATE logbook SET kegiatan = ?, kendala = ? WHERE id = ?",
+      "UPDATE logbook SET kegiatan = ?, kendala = ?, edit_count = edit_count + 1 WHERE id = ?",
       [kegiatan.trim(), kendala ? kendala.trim() : null, id],
     );
     const [rows] = await conn.query("SELECT * FROM logbook WHERE id = ?", [id]);
     return res.json({
       success: true,
-      message: "Logbook berhasil diupdate",
+      message: `Logbook berhasil diupdate (sisa edit: ${2 - (editCount + 1)})`,
       data: formatLogbook(rows[0]),
     });
   } catch (err) {
@@ -322,49 +333,10 @@ router.post("/logbook/:id/submit", verifyToken, isMahasiswa, async (req, res) =>
 });
 
 /*
- * DELETE /api/logbook/:id
+ * DELETE /api/logbook/:id — DIHAPUS.
+ * Mahasiswa tidak bisa menghapus logbook sendiri; hanya admin
+ * (DELETE /api/admin/logbook/:id) yang bisa menghapus.
  */
-router.delete("/logbook/:id", verifyToken, isMahasiswa, async (req, res) => {
-  const conn = await pool.getConnection();
-  try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "ID tidak valid" });
-    }
-
-    const [existingRows] = await conn.query(
-      "SELECT * FROM logbook WHERE id = ? LIMIT 1",
-      [id],
-    );
-    if (existingRows.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Logbook tidak ditemukan" });
-    }
-    const existing = existingRows[0];
-
-    if (existing.nama !== req.user.nama) {
-      return res
-        .status(403)
-        .json({ success: false, message: "Anda tidak punya akses ke logbook ini" });
-    }
-    if (existing.status !== "draft") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Hanya draft yang bisa dihapus" });
-    }
-
-    await conn.query("DELETE FROM logbook WHERE id = ?", [id]);
-    return res.json({ success: true, message: "Logbook berhasil dihapus" });
-  } catch (err) {
-    console.error("Delete logbook error:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
-  } finally {
-    conn.release();
-  }
-});
 
 /* ============================================================================
  * ADMIN ENDPOINTS
@@ -461,7 +433,7 @@ router.post("/admin/logbook/:id/reset", verifyToken, isAdmin, async (req, res) =
         .json({ success: false, message: "ID tidak valid" });
     }
     await conn.query(
-      "UPDATE logbook SET status = 'draft', submitted_at = NULL WHERE id = ?",
+      "UPDATE logbook SET status = 'draft', submitted_at = NULL, edit_count = 0 WHERE id = ?",
       [id],
     );
     const [rows] = await conn.query("SELECT * FROM logbook WHERE id = ?", [id]);
@@ -472,7 +444,7 @@ router.post("/admin/logbook/:id/reset", verifyToken, isAdmin, async (req, res) =
     }
     return res.json({
       success: true,
-      message: "Logbook di-reset ke draft",
+      message: "Logbook di-reset ke draft (jatah edit 2x dipulihkan)",
       data: formatLogbook(rows[0]),
     });
   } catch (err) {

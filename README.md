@@ -14,7 +14,7 @@ Aplikasi fullstack untuk absensi, pendaftaran, logbook, dan penilaian peserta PK
 |---|---|
 | Absensi | Absen pagi/sore, validasi WiFi kampus & device binding, hari libur |
 | Izin | Pengajuan izin (maks 2/hari), approval admin, pembatalan |
-| Logbook | Catatan harian mahasiswa (draft → submit → lock), reset oleh admin |
+| Logbook | Catatan harian mahasiswa (draft → edit maks 2x → submit → lock); hapus & reset hanya oleh admin |
 | Pendaftaran | Form publik + upload 3 PDF, kuota divisi, dashboard admin pendaftaran |
 | Mentor | Indikator penilaian, nilai, sertifikat, tugas mingguan, tugas akhir |
 | Admin | Statistik, kelola user/device, laporan absensi, tanggal merah |
