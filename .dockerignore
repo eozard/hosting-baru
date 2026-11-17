@@ -1,0 +1,26 @@
+node_modules
+.git
+.gitignore
+client/node_modules
+server/node_modules
+client/dist
+server/uploads
+npm-debug.log
+.env
+.env.local
+.pgtest
+.commandcode
+.perch
+.vscode
+doc
+mockup
+sequence
+use case
+uat-lampiran
+*.docx
+*.pdf
+*.png
+*.drawio
+jurnal*
+gambar*
+pkl.sql
