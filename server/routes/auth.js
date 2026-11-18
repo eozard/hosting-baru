@@ -312,6 +312,7 @@ export const absen = async (req, res) => {
     // sesi itu dihormati supaya pesan balasan selalu nyambung dengan tombolnya.
     // Client lama yang tidak mengirim `sesi` tetap dilayani lewat deteksi otomatis.
     let sesi;
+    let diLuarJendela = false;
     const pagiStart = 8 * 60;
     const pagiEnd = 10 * 60;
     const soreStart = 15 * 60;
@@ -359,18 +360,11 @@ export const absen = async (req, res) => {
         `📝 Bypass mode: sesi "${sesi}" (diminta client: ${sesiDiminta || "tidak ada"})`,
       );
     } else if (sesiDiminta) {
-      // Hormati tombol yang ditekan. Kalau sedang di luar jendela sesi itu,
-      // sebutkan sesi tersebut beserta jam bukanya, bukan sesi yang lain.
-      const sesuaiJendela =
-        sesiDiminta === "pagi" ? dalamJendelaPagi : dalamJendelaSore;
-      if (!sesuaiJendela) {
-        const jendela = sesiDiminta === "pagi" ? "08:00-10:00" : "15:00-17:00";
-        return res.status(403).json({
-          success: false,
-          message: `Absen ${sesiDiminta} hanya dibuka pukul ${jendela} WIB. Sekarang pukul ${jamWib} WIB.`,
-        });
-      }
+      // Hormati tombol yang ditekan. Jendela jam tidak langsung menolak di
+      // sini: aturan jeda 6 jam dan cek duplikat diperiksa lebih dahulu,
+      // supaya alasan yang paling relevan yang muncul sebagai notifikasi.
       sesi = sesiDiminta;
+      diLuarJendela = !(sesi === "pagi" ? dalamJendelaPagi : dalamJendelaSore);
     } else {
       if (dalamJendelaPagi) {
         sesi = "pagi";
@@ -408,6 +402,13 @@ export const absen = async (req, res) => {
           return res
             .status(400)
             .json({ success: false, message: "Data waktu absen tidak valid" });
+        }
+        if (diffMinutesRaw < 0) {
+          return res.status(403).json({
+            success: false,
+            message:
+              "Waktu absen sore lebih awal daripada absen pagi hari ini. Periksa jam perangkat Anda.",
+          });
         }
 
         const pagiJakarta = new Date(
@@ -467,6 +468,17 @@ export const absen = async (req, res) => {
       return res
         .status(403)
         .json({ success: false, message: `Anda sudah absen ${sesi} hari ini` });
+    }
+
+    // STEP 5.5: Jendela jam absen. Diperiksa setelah aturan jeda dan duplikat
+    // supaya notifikasi selalu menyebut alasan yang paling relevan lebih dulu.
+    if (diLuarJendela) {
+      const jendela = sesi === "pagi" ? "08:00-10:00" : "15:00-17:00";
+      console.log(`🚫 Absen ${sesi} di luar jendela jam (${jamWib} WIB)`);
+      return res.status(403).json({
+        success: false,
+        message: `Absen ${sesi} hanya dibuka pukul ${jendela} WIB. Sekarang pukul ${jamWib} WIB.`,
+      });
     }
 
     // STEP 6: Insert absensi
