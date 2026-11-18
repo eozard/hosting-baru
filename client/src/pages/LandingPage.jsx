@@ -5,7 +5,7 @@
  */
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { LogIn, Building2, ChevronRight, GraduationCap } from "lucide-react";
+import { LogIn, Building2, ChevronRight, GraduationCap, ClipboardList } from "lucide-react";
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -101,6 +101,19 @@ const LandingPage = () => {
         <p className="text-center text-sm text-white/50 mt-8 font-medium">
           &copy; {new Date().getFullYear()} PKL BPTI. All rights reserved.
         </p>
+
+        {/* Tombol kecil kuesioner UAT di paling bawah */}
+        <div className="text-center mt-4">
+          <a
+            href="https://forms.gle/h92kqgNQEodXET337"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-medium text-white/70 hover:text-white transition-colors"
+          >
+            <ClipboardList className="w-3.5 h-3.5" />
+            Isi Kuesioner UAT
+          </a>
+        </div>
       </div>
 
       <style jsx>{`
