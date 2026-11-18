@@ -308,29 +308,73 @@ export const absen = async (req, res) => {
     const timeInMinutes = hour * 60 + minute;
 
     // STEP 3: Tentukan sesi
+    // Client mengirim `sesi` sesuai tombol yang ditekan (pagi/sore). Kalau ada,
+    // sesi itu dihormati supaya pesan balasan selalu nyambung dengan tombolnya.
+    // Client lama yang tidak mengirim `sesi` tetap dilayani lewat deteksi otomatis.
     let sesi;
     const pagiStart = 8 * 60;
     const pagiEnd = 10 * 60;
     const soreStart = 15 * 60;
     const soreEnd = 17 * 60;
+    const jamWib = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+
+    const sesiDiminta =
+      typeof req.body.sesi === "string"
+        ? req.body.sesi.trim().toLowerCase()
+        : null;
+    if (sesiDiminta && !["pagi", "sore"].includes(sesiDiminta)) {
+      return res.status(400).json({
+        success: false,
+        message: "Sesi absen tidak valid. Pilih pagi atau sore.",
+      });
+    }
+
+    const dalamJendelaPagi =
+      timeInMinutes >= pagiStart && timeInMinutes <= pagiEnd;
+    const dalamJendelaSore =
+      timeInMinutes >= soreStart && timeInMinutes <= soreEnd;
 
     if (process.env.BYPASS_PAGI_ONLY === "true") {
       console.log("⏰ Time check bypassed (pagi only)");
+      if (sesiDiminta === "sore") {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Absen sore tidak tersedia: mode pengujian sedang dibatasi pada absen pagi saja.",
+        });
+      }
       sesi = "pagi";
     } else if (process.env.BYPASS_TIME_CHECK === "true") {
       console.log("⏰ Time check bypassed (full)");
-      const [pagiRows] = await conn.query(
-        "SELECT id FROM attendances WHERE nama = ? AND tanggal = ? AND sesi = 'pagi' LIMIT 1",
-        [nama, today],
-      );
-      sesi = pagiRows.length > 0 ? "sore" : "pagi";
+      if (sesiDiminta) {
+        sesi = sesiDiminta;
+      } else {
+        const [pagiRows] = await conn.query(
+          "SELECT id FROM attendances WHERE nama = ? AND tanggal = ? AND sesi = 'pagi' LIMIT 1",
+          [nama, today],
+        );
+        sesi = pagiRows.length > 0 ? "sore" : "pagi";
+      }
       console.log(
-        `📝 Bypass mode: Sesi otomatis set ke "${sesi}" (sudah absen pagi: ${pagiRows.length > 0})`,
+        `📝 Bypass mode: sesi "${sesi}" (diminta client: ${sesiDiminta || "tidak ada"})`,
       );
+    } else if (sesiDiminta) {
+      // Hormati tombol yang ditekan. Kalau sedang di luar jendela sesi itu,
+      // sebutkan sesi tersebut beserta jam bukanya, bukan sesi yang lain.
+      const sesuaiJendela =
+        sesiDiminta === "pagi" ? dalamJendelaPagi : dalamJendelaSore;
+      if (!sesuaiJendela) {
+        const jendela = sesiDiminta === "pagi" ? "08:00-10:00" : "15:00-17:00";
+        return res.status(403).json({
+          success: false,
+          message: `Absen ${sesiDiminta} hanya dibuka pukul ${jendela} WIB. Sekarang pukul ${jamWib} WIB.`,
+        });
+      }
+      sesi = sesiDiminta;
     } else {
-      if (timeInMinutes >= pagiStart && timeInMinutes <= pagiEnd) {
+      if (dalamJendelaPagi) {
         sesi = "pagi";
-      } else if (timeInMinutes >= soreStart && timeInMinutes <= soreEnd) {
+      } else if (dalamJendelaSore) {
         sesi = "sore";
       } else {
         return res.status(403).json({
@@ -395,9 +439,17 @@ export const absen = async (req, res) => {
         });
 
         if (diffHours < 6) {
+          const formatDurasi = (menit) => {
+            const total = Math.max(0, Math.round(menit));
+            const j = Math.floor(total / 60);
+            const m = total % 60;
+            if (j > 0 && m > 0) return `${j} jam ${m} menit`;
+            if (j > 0) return `${j} jam`;
+            return `${m} menit`;
+          };
           return res.status(403).json({
             success: false,
-            message: `Jeda absen pagi-sore minimal 6 jam (di luar istirahat). Waktu tersisa: ${(6 - diffHours).toFixed(1)} jam`,
+            message: `Jarak absen pagi ke sore minimal 6 jam (di luar jam istirahat). Jeda Anda baru ${formatDurasi(effectiveDiffMinutes)}, masih kurang ${formatDurasi((6 - diffHours) * 60)} lagi.`,
           });
         }
       } else {

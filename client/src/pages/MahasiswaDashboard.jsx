@@ -638,6 +638,7 @@ const MahasiswaDashboard = ({ portalMode = "absen" }) => {
       const response = await axiosInstance.post("/absen", {
         login_time: now.toISOString(),
         deviceId,
+        sesi,
       });
 
       if (response.data.success) {
